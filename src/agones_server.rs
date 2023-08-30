@@ -1,7 +1,8 @@
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     pin::Pin,
-    sync::Arc, result::Result,
+    result::Result,
+    sync::Arc,
 };
 
 use futures::{StreamExt, TryStreamExt};
@@ -169,11 +170,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
 
     /// Server streaming response type for the WatchGameServer method.
     type WatchGameServerStream = Pin<
-        Box<
-            dyn futures_core::Stream<Item = Result<GameServer, tonic::Status>>
-                + Send
-                + 'static,
-        >,
+        Box<dyn futures_core::Stream<Item = Result<GameServer, tonic::Status>> + Send + 'static>,
     >;
 
     /// Send GameServer details whenever the GameServer is updated
