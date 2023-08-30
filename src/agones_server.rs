@@ -1,7 +1,7 @@
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     pin::Pin,
-    sync::Arc,
+    sync::Arc, result::Result,
 };
 
 use futures::{StreamExt, TryStreamExt};
@@ -104,7 +104,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn ready(
         &self,
         _request: tonic::Request<Empty>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         tracing::info!("Got ready call");
         self.set_game_server_state(GameServerState::Ready);
         Ok(tonic::Response::new(Empty {}))
@@ -114,7 +114,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn allocate(
         &self,
         _request: tonic::Request<Empty>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         tracing::info!("Got allocate call");
         self.set_game_server_state(GameServerState::Allocated);
         Ok(tonic::Response::new(Empty {}))
@@ -124,7 +124,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn shutdown(
         &self,
         _request: tonic::Request<Empty>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         tracing::info!("Got shutdown call");
         self.set_game_server_state(GameServerState::Shutdown);
         Ok(tonic::Response::new(Empty {}))
@@ -134,12 +134,24 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn health(
         &self,
         request: tonic::Request<tonic::Streaming<Empty>>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         tracing::info!("Got health call");
         let mut stream = request.into_inner();
         tokio::spawn(async move {
-            while stream.message().await.is_ok() {
-                tracing::info!("Got a health message");
+            loop {
+                match stream.message().await {
+                    Ok(None) => {
+                        tracing::info!("Got health stream end");
+                        break;
+                    }
+                    Ok(_) => {
+                        tracing::info!("Got health message");
+                    }
+                    Err(err) => {
+                        tracing::error!("Got health stream error: {:?}", err);
+                        break;
+                    }
+                }
             }
         });
 
@@ -150,7 +162,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn get_game_server(
         &self,
         _request: tonic::Request<Empty>,
-    ) -> std::result::Result<tonic::Response<GameServer>, tonic::Status> {
+    ) -> Result<tonic::Response<GameServer>, tonic::Status> {
         tracing::info!("Got get_game_server call");
         Ok(tonic::Response::new(self.game_server()))
     }
@@ -158,7 +170,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     /// Server streaming response type for the WatchGameServer method.
     type WatchGameServerStream = Pin<
         Box<
-            dyn futures_core::Stream<Item = std::result::Result<GameServer, tonic::Status>>
+            dyn futures_core::Stream<Item = Result<GameServer, tonic::Status>>
                 + Send
                 + 'static,
         >,
@@ -168,7 +180,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn watch_game_server(
         &self,
         _request: tonic::Request<Empty>,
-    ) -> std::result::Result<tonic::Response<Self::WatchGameServerStream>, tonic::Status> {
+    ) -> Result<tonic::Response<Self::WatchGameServerStream>, tonic::Status> {
         tracing::info!("Got watch_game_server call");
         let rx = self.game_server_sender.subscribe();
         let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
@@ -185,7 +197,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn set_label(
         &self,
         request: tonic::Request<KeyValue>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         let KeyValue { key, value } = request.into_inner();
         tracing::info!("Got set_label call k={:?} v={:?}", key, value);
         self.mutate_game_server(|gs| {
@@ -200,7 +212,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn set_annotation(
         &self,
         request: tonic::Request<KeyValue>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         let KeyValue { key, value } = request.into_inner();
         tracing::info!("Got set_annotation call k={:?} v={:?}", key, value);
         self.mutate_game_server(move |gs| {
@@ -215,7 +227,7 @@ impl sdk::sdk_server::Sdk for AgonesServer {
     async fn reserve(
         &self,
         request: tonic::Request<Duration>,
-    ) -> std::result::Result<tonic::Response<Empty>, tonic::Status> {
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
         tracing::info!("Got reserve call duration={:?}", request.into_inner());
         self.set_game_server_state(GameServerState::Reserved);
         // FIXME: use duration maybe?
