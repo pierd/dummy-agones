@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC All Rights Reserved.
+// Copyright 2020 Google LLC All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package allocation;
 option go_package = "./allocation";
 
 import "google/api/annotations.proto";
+import "google/protobuf/wrappers.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
@@ -77,19 +78,71 @@ message AllocationRequest {
   // This is useful for things like smoke testing of new game servers.
   // Note: This field can only be set if neither Required or Preferred is set.
   repeated GameServerSelector gameServerSelectors = 8;
+
+  // [Stage: Beta]
+  // [FeatureFlag:CountsAndLists]
+  // `Priorities` configuration alters the order in which `GameServers` are searched for matches to the configured `selectors`.
+  //
+  // Priority of sorting is in descending importance. I.e. The position 0 `priority` entry is checked first.
+  //
+  // For `Packed` strategy sorting, this priority list will be the tie-breaker within the least utilised infrastructure, to ensure optimal
+  // infrastructure usage while also allowing some custom prioritisation of `GameServers`.
+  //
+  // For `Distributed` strategy sorting, the entire selection of `GameServers` will be sorted by this priority list to provide the
+  // order that `GameServers` will be allocated by.
+  repeated Priority priorities = 9;
+
+  // [Stage: Beta]
+  // [FeatureFlag:CountsAndLists]
+  // Counters and Lists provide a set of actions to perform
+  // on Counters and Lists during allocation.
+  map<string, CounterAction> counters = 10;
+  map<string, ListAction> lists = 11;
 }
 
 message AllocationResponse {
   string gameServerName = 2;
   repeated GameServerStatusPort ports = 3;
+
+  // Primary address at which game server can be reached
   string address = 4;
+
+  // All addresses at which game server can be reached; copy of Node.Status.addresses
+  repeated GameServerStatusAddress addresses = 8;
+
   string nodeName = 5;
   string source = 6;
+  optional GameServerMetadata metadata = 7;
+
+  // (Beta, CountsAndLists feature flag) Status of Counters and Lists on allocation.
+  map<string, CounterStatus> counters = 9;
+  map<string, ListStatus> lists = 10;
 
   // The gameserver port info that is allocated.
   message GameServerStatusPort {
     string name = 1;
     int32 port = 2;
+  }
+
+  // A single address; identical to corev1.NodeAddress
+  message GameServerStatusAddress {
+    string type = 1;
+    string address = 2;
+  }
+
+  message GameServerMetadata {
+    map<string, string> labels = 1;
+    map<string, string> annotations = 2;
+  }
+
+  message CounterStatus {
+    google.protobuf.Int64Value count = 1;
+    google.protobuf.Int64Value capacity = 2;
+  }
+
+  message ListStatus {
+    repeated string values = 1;
+    google.protobuf.Int64Value capacity = 2;
   }
 }
 
@@ -124,6 +177,8 @@ message GameServerSelector {
   };
   GameServerState gameServerState = 2;
   PlayerSelector players = 3;
+  map<string, CounterSelector> counters = 4;
+  map<string, ListSelector> lists = 5;
 }
 
 // PlayerSelector is filter for player capacity values.
@@ -131,4 +186,62 @@ message GameServerSelector {
 message PlayerSelector {
   uint64 minAvailable = 1;
   uint64 maxAvailable = 2;
+}
+
+// CounterSelector is the filter options for a GameServer based on the count and/or available capacity.
+// 0 for MaxCount or MaxAvailable means unlimited maximum. Default for all fields: 0
+message CounterSelector {
+  int64 minCount = 1;
+  int64 maxCount = 2;
+  int64 minAvailable = 3;
+  int64 maxAvailable = 4;
+}
+
+// ListSelector is the filter options for a GameServer based on List available capacity and/or the
+// existence of a value in a List.
+// 0 for MaxAvailable means unlimited maximum. Default for integer fields: 0
+// "" for ContainsValue means ignore field. Default for string field: ""
+message ListSelector {
+  string containsValue = 1;
+  int64 minAvailable = 2;
+  int64 maxAvailable = 3;
+}
+
+// Priority is a sorting option for GameServers with Counters or Lists based on the Capacity.
+// Type: Sort by a "Counter" or a "List".
+// Key: The name of the Counter or List. If not found on the GameServer, has no impact.
+// Order: Sort by "Ascending" or "Descending". "Descending" a bigger Capacity is preferred.
+// "Ascending" would be smaller Capacity is preferred.
+message Priority {
+  enum Type {
+    Counter = 0;
+    List = 1;
+  }
+  Type type = 1;
+  string key = 2;
+  enum Order {
+    Ascending = 0;
+    Descending = 1;
+  }
+  Order order = 3;
+}
+
+// CounterAction is an optional action that can be performed on a Counter at allocation.
+// Action: "Increment" or "Decrement" the Counter's Count (optional). Must also define the Amount.
+// Amount: The amount to increment or decrement the Count (optional). Must be a positive integer.
+// Capacity: Update the maximum capacity of the Counter to this number (optional). Min 0, Max int64.
+message CounterAction {
+  google.protobuf.StringValue action = 1;
+  google.protobuf.Int64Value amount = 2;
+  google.protobuf.Int64Value capacity = 3;
+}
+
+// ListAction is an optional action that can be performed on a List at allocation.
+// AddValues: Append values to a List's Values array (optional). Any duplicate values will be ignored.
+// Capacity: Update the maximum capacity of the Counter to this number (optional). Min 0, Max 1000.
+// DeleteValues: Remove values from a List's Values array (optional). Any nonexistant values will be ignored.
+message ListAction {
+  repeated string addValues = 1;
+  google.protobuf.Int64Value capacity = 2;
+  repeated string deleteValues = 3;
 }

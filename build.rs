@@ -10,6 +10,9 @@ fn main() {
         .type_attribute("Status", derive_serde)
         .type_attribute("PlayerStatus", derive_serde)
         .type_attribute("Port", derive_serde)
+        .type_attribute("Address", derive_serde)
+        .type_attribute("ListStatus", derive_serde)
+        .type_attribute("CounterStatus", derive_serde)
         .compile(
             &["proto/sdk/alpha/alpha.proto", "proto/sdk/sdk.proto"],
             &[

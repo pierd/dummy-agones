@@ -32,7 +32,7 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 
 [dev-dependencies]
-agones = { git = "https://github.com/googleforgames/agones", rev = "refs/tags/v1.33.0" }
+agones = { git = "https://github.com/googleforgames/agones", rev = "refs/tags/v1.48.0" }
 claims = "0.7"
 fake = "2.6"
 
